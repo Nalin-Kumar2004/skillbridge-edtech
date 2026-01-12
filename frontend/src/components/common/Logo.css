@@ -1,0 +1,31 @@
+/* Text-only responsive logo */
+.logo-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--logo-bridge-color, #ffffff);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.logo-link:hover { opacity: 0.9; }
+
+.logo-text {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-weight: 800;
+  /* Scales smoothly between mobile and desktop */
+  font-size: clamp(1rem, 2.2vw, 2rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.logo-skill { color: var(--logo-skill-color, #FFB800); }
+.logo-bridge { color: currentColor; }
+
+/* Accessibility focus */
+.logo-link:focus {
+  outline: 2px solid #FFC837;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.logo-link:active { transform: scale(0.99); }
