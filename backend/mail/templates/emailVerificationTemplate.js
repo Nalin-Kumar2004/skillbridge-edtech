@@ -76,7 +76,7 @@ const otpTemplate = (otp, name) => {
 				<p>Thank you for registering with SkillBridge. To complete your registration, please use the following OTP
 					(One-Time Password) to verify your account:</p>
 				<h2 class="highlight">${otp}</h2>
-				<p>This OTP is valid for 3 minutes. If you did not request this verification, please disregard this email.
+				<p>This OTP is valid only for 3 minutes. If you did not request this verification, please disregard this email.
 				Once your account is verified, you will have access to our platform and its features.</p>
 			</div>
 			<div class="support">If you have any questions or need assistance, please feel free to reach out to us at <a
