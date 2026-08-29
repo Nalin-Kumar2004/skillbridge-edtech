@@ -10,6 +10,7 @@ require('dotenv').config();
 // connection to DB and cloudinary
 const { connectDB } = require('./config/database');
 const { cloudinaryConnect } = require('./config/cloudinary');
+const { connectRedis } = require('./config/redis');
 
 // routes
 const userRoutes = require('./routes/user');
@@ -19,7 +20,12 @@ const courseRoutes = require('./routes/course');
 const reachRoutes = require('./routes/reach');
 
 
-// middleware 
+// middleware
+// 1. MUST GO BEFORE express.json()
+// We use express.raw to preserve the exact byte stream for cryptographic hashing
+app.use('/api/v1/payment/webhook', express.raw({ type: 'application/json' }));
+
+// 2. Standard parsing for all your other routes (login, course creation, etc.)
 app.use(express.json()); // to parse json body
 app.use(cookieParser());
 
@@ -75,6 +81,8 @@ console.log('\n🔗 Initializing database connection...');
 connectDB();
 console.log('\n☁️  Initializing Cloudinary connection...');
 cloudinaryConnect();
+console.log('\n⚡ Initializing Redis connection...');
+connectRedis();
 
 // mount route
 app.use('/api/v1/auth', userRoutes);

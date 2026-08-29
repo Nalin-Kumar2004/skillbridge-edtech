@@ -1,0 +1,66 @@
+name: SkillBridge CI Pipeline
+
+# Trigger the workflow on pushes and pull requests to the main branch
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # Job 1: Verify the Frontend
+  frontend-checks:
+    name: Frontend Build & Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    
+    steps:
+      # 1. Checkout the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      # 3. Install dependencies securely (fails if package-lock is out of sync)
+      - name: Install Dependencies
+        run: npm ci
+
+      # 4. Run Syntax & Quality Checks
+      - name: Run ESLint
+        run: npm run lint
+
+      # 5. Verify the production build succeeds without errors
+      - name: Verify Build
+        run: npm run build
+
+
+  # Job 2: Verify the Backend
+  backend-checks:
+    name: Backend Dependency Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+        
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './backend/package-lock.json'
+
+      # Ensures backend dependencies can install cleanly (prevents "works on my machine" errors)
+      - name: Install Dependencies
+        run: npm ci

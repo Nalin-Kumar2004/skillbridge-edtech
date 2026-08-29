@@ -52,7 +52,8 @@ desktop.ini
 *~
 
 # Dependencies
-package-lock.json
+# IMPORTANT: Never ignore package-lock.json if you are using CI/CD! 
+# npm ci requires it to ensure exactly the same dependencies are installed on the cloud server.
 yarn.lock
 pnpm-lock.yaml
 

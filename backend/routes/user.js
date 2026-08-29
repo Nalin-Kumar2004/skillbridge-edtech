@@ -18,6 +18,7 @@ const {
 
 // Middleware
 const { auth, isAdmin } = require('../middleware/auth');
+const { rateLimiter } = require('../middleware/rateLimiter');
 const { getAllStudents, getAllInstructors } = require('../controllers/profile');
 
 
@@ -27,14 +28,14 @@ const { getAllStudents, getAllInstructors } = require('../controllers/profile');
 //                                      Authentication routes
 // ********************************************************************************************************
 
-// Route for user signup
-router.post('/signup', signup);
+// Route for user signup (Max 5 signups per hour per IP)
+router.post('/signup', rateLimiter(5, 3600), signup);
 
-// Route for user login
-router.post('/login', login);
+// Route for user login (Max 5 login attempts per minute per IP to prevent brute-force)
+router.post('/login', rateLimiter(5, 60), login);
 
-// Route for sending OTP to the user's email
-router.post('/sendotp', sendOTP);
+// Route for sending OTP to the user's email (Max 3 OTPs per 5 minutes per IP to prevent email spam)
+router.post('/sendotp', rateLimiter(3, 300), sendOTP);
 
 // Route for Changing the password
 router.post('/changepassword', auth, changePassword);

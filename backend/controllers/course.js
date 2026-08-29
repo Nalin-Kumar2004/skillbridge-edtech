@@ -5,6 +5,7 @@ const Section = require('../models/section')
 const SubSection = require('../models/subSection')
 const CourseProgress = require('../models/courseProgress')
 
+const { redisClient } = require('../config/redis');
 const { uploadImageToCloudinary, deleteResourceFromCloudinary } = require('../utils/imageUploader');
 const { convertSecondsToDuration } = require("../utils/secToDuration")
 
@@ -148,6 +149,9 @@ exports.createCourse = async (req, res) => {
         console.log('Final Course ID:', newCourse._id);
         console.log('========================================\n\n');
         
+        // Cache Invalidation: clear the cached courses list since a new course was added!
+        await redisClient.del('allCourses');
+        
         res.status(200).json({
             success: true,
             data: newCourse,
@@ -174,6 +178,14 @@ exports.createCourse = async (req, res) => {
 // ================ show all courses ================
 exports.getAllCourses = async (req, res) => {
     try {
+        // 1. Check if the courses are already in the Redis cache
+        const cachedCourses = await redisClient.get('allCourses');
+        if (cachedCourses) {
+            console.log('⚡ Fetched courses from Redis Cache');
+            return res.status(200).json(JSON.parse(cachedCourses));
+        }
+
+        console.log('🐢 Fetched courses from MongoDB');
         const allCourses = await Course.find({ status: "Published" },
             {
                 courseName: true, courseDescription: true, price: true, thumbnail: true, instructor: true,
@@ -185,11 +197,17 @@ exports.getAllCourses = async (req, res) => {
             })
             .exec();
 
-        return res.status(200).json({
+        const responseData = {
             success: true,
             data: allCourses,
             message: 'Data for all courses fetched successfully'
-        });
+        };
+
+        // 2. Save the result to Redis with a TTL of 1 hour (3600 seconds)
+        // Redis only stores strings, so we must JSON.stringify the JavaScript object!
+        await redisClient.setEx('allCourses', 3600, JSON.stringify(responseData));
+
+        return res.status(200).json(responseData);
     }
 
     catch (error) {
@@ -441,6 +459,9 @@ exports.editCourse = async (req, res) => {
             })
             .exec()
 
+        // Cache Invalidation: clear the cached courses list since a course was updated!
+        await redisClient.del('allCourses');
+
         // success response
         res.status(200).json({
             success: true,
@@ -550,6 +571,9 @@ exports.deleteCourse = async (req, res) => {
 
         // Delete the course
         await Course.findByIdAndDelete(courseId)
+
+        // Cache Invalidation: clear the cached courses list since a course was deleted!
+        await redisClient.del('allCourses');
 
         return res.status(200).json({
             success: true,

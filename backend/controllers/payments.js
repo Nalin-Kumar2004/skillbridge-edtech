@@ -97,89 +97,104 @@ exports.verifyPayment = async (req, res) => {
         return res.status(400).json({ success: false, message: "Payment Failed, data not found" });
     }
 
-    // Check if this is a test enrollment (when Razorpay is not configured)
-    if (razorpay_signature === "TEST_SIGNATURE" && razorpay_order_id.startsWith("TEST_ORDER_")) {
-        console.log("⚠️ TEST MODE: Enrolling student without payment verification");
-        //enroll student in test mode
-        await enrollStudents(courses, userId, res);
-        //return res
-        return res.status(200).json({ success: true, message: "Payment Verified (Test Mode)" });
+    try {
+        // Check if this is a test enrollment (when Razorpay is not configured)
+        if (razorpay_signature === "TEST_SIGNATURE" && razorpay_order_id.startsWith("TEST_ORDER_")) {
+            console.log("⚠️ TEST MODE: Enrolling student without payment verification");
+            //enroll student in test mode
+            await enrollStudents(courses, userId, "TEST_EVENT");
+            //return res
+            return res.status(200).json({ success: true, message: "Payment Verified (Test Mode)" });
+        }
+
+        let body = razorpay_order_id + "|" + razorpay_payment_id;
+        const expectedSignature = crypto
+            .createHmac("sha256", process.env.RAZORPAY_SECRET)
+            .update(body.toString())
+            .digest("hex");
+
+        if (expectedSignature === razorpay_signature) {
+            //enroll student
+            await enrollStudents(courses, userId, razorpay_payment_id);
+            //return res
+            return res.status(200).json({ success: true, message: "Payment Verified" });
+        }
+        return res.status(200).json({ success: "false", message: "Payment Failed" });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
     }
-
-    let body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-        .createHmac("sha256", process.env.RAZORPAY_SECRET)
-        .update(body.toString())
-        .digest("hex");
-
-    if (expectedSignature === razorpay_signature) {
-        //enroll student
-        await enrollStudents(courses, userId, res);
-        //return res
-        return res.status(200).json({ success: true, message: "Payment Verified" });
-    }
-    return res.status(200).json({ success: "false", message: "Payment Failed" });
-
 }
 
 
 // ================ enroll Students to course after payment ================
-const enrollStudents = async (courses, userId, res) => {
-
+const enrollStudents = async (courses, userId, eventId) => {
     if (!courses || !userId) {
-        return res.status(400).json({ success: false, message: "Please Provide data for Courses or UserId" });
+        throw new Error("Missing required data for enrollment");
     }
 
-    for (const courseId of courses) {
-        try {
-            //find the course and enroll the student in it
+    // 1. Initialize the MongoDB Session
+    const session = await mongoose.startSession();
+
+    try {
+        // 2. Start the Atomic Transaction
+        session.startTransaction();
+
+        for (const courseId of courses) {
+            // Step A: Update Course (Notice the { session } object passed at the end)
             const enrolledCourse = await Course.findOneAndUpdate(
                 { _id: courseId },
                 { $push: { studentsEnrolled: userId } },
-                { new: true },
-            )
+                { new: true, session }
+            );
 
             if (!enrolledCourse) {
-                return res.status(500).json({ success: false, message: "Course not Found" });
+                throw new Error(`Course not found: ${courseId}`);
             }
-            // console.log("Updated course: ", enrolledCourse)
 
-            // Initialize course preogres with 0 percent
-            const courseProgress = await CourseProgress.create({
-                courseID: courseId,
-                userId: userId,
-                completedVideos: [],
-            })
+            // Step B: Create CourseProgress (Must pass array when using sessions with .create)
+            const courseProgress = await CourseProgress.create(
+                [{
+                    courseID: courseId,
+                    userId: userId,
+                    completedVideos: [],
+                }],
+                { session }
+            );
 
-            // Find the student and add the course to their list of enrolled courses
+            // Step C: Update User Account
             const enrolledStudent = await User.findByIdAndUpdate(
                 userId,
                 {
                     $push: {
                         courses: courseId,
-                        courseProgress: courseProgress._id,
+                        courseProgress: courseProgress[0]._id,
                     },
                 },
-                { new: true }
-            )
+                { new: true, session }
+            );
 
-            // console.log("Enrolled student: ", enrolledStudent)
-
-            // Send an email notification to the enrolled student
-            const emailResponse = await mailSender(
+            // Step D: Send Email (We do this asynchronously so it doesn't block the transaction)
+            mailSender(
                 enrolledStudent.email,
                 `Successfully Enrolled into ${enrolledCourse.courseName}`,
                 courseEnrollmentEmail(enrolledCourse.courseName, `${enrolledStudent.firstName}`)
-            )
-            // console.log("Email Sent Successfully", emailResponse);
+            ).catch(err => console.error("Email failed, but transaction is safe:", err));
         }
-        catch (error) {
-            console.log(error);
-            return res.status(500).json({ success: false, message: error.message });
-        }
-    }
 
-}
+        // 3. If EVERYTHING succeeded, commit all changes permanently
+        await session.commitTransaction();
+        console.log(`✅ Atomic transaction successful for event: ${eventId}`);
+
+    } catch (error) {
+        // 4. If ANYTHING failed, roll back all database changes instantly
+        await session.abortTransaction();
+        console.error(`🚨 Transaction aborted for event ${eventId}:`, error.message);
+        throw error; // Let the webhook controller handle the 500 status
+    } finally {
+        // Always end the session to prevent memory leaks
+        session.endSession();
+    }
+};
 
 
 
@@ -209,65 +224,50 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
 }
 
 
-// ================ verify Signature ================
-// exports.verifySignature = async (req, res) => {
-//     const webhookSecret = '12345678';
+// ================ verify Signature (Webhook) ================
+exports.razorpayWebhook = async (req, res) => {
+    // Note: You will need to add RAZORPAY_WEBHOOK_SECRET to your .env file
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const signature = req.headers['x-razorpay-signature'];
 
-//     const signature = req.headers['x-rajorpay-signature'];
+    try {
+        // 1. Cryptographic Verification (Using the raw buffer)
+        const shasum = crypto.createHmac('sha256', webhookSecret);
+        shasum.update(req.body); // req.body is a raw buffer here, thanks to express.raw()
+        const digest = shasum.digest('hex');
 
-//     const shasum = crypto.createHmac('sha256', webhookSecret);
-//     shasum.update(JSON.stringify(req.body));
-//     const digest = shasum.digest('hex');
+        if (signature !== digest) {
+            console.error("🚨 Webhook Signature Mismatch!");
+            return res.status(400).json({ success: false, message: 'Invalid signature' });
+        }
 
+        console.log('✅ Webhook Signature Verified Mathematically');
 
-//     if (signature === digest) {
-//         console.log('Payment is Authorized');
+        // 2. Parse the buffer back to JSON to read the data
+        const event = JSON.parse(req.body.toString());
 
-//         const { courseId, userId } = req.body.payload.payment.entity.notes;
+        // 3. Handle specific Razorpay events
+        if (event.event === 'payment.captured') {
+            const paymentEntity = event.payload.payment.entity;
 
-//         try {
-//             const enrolledCourse = await Course.findByIdAndUpdate({ _id: courseId },
-//                 { $push: { studentsEnrolled: userId } },
-//                 { new: true });
+            // Extract the user and course info we injected during order creation
+            // (Assuming you pass these inside the 'notes' object when calling Razorpay Orders API)
+            const userId = paymentEntity.notes?.userId;
+            const coursesId = paymentEntity.notes?.coursesId ? paymentEntity.notes.coursesId.split(',') : [];
 
-//             // wrong upper ?
+            if (userId && coursesId.length > 0) {
+                console.log(`Processing enrollment for User: ${userId}, Courses: ${coursesId}`);
 
-//             if (!enrolledCourse) {
-//                 return res.status(500).json({
-//                     success: false,
-//                     message: 'Course not found'
-//                 });
-//             }
+                // We will call the upgraded enrollStudents function here next
+                await enrollStudents(coursesId, userId, signature);
+            }
+        }
 
-//             // add course id to user course list
-//             const enrolledStudent = await User.findByIdAndUpdate(userId,
-//                 { $push: { courses: courseId } },
-//                 { new: true });
+        // 4. Acknowledge the webhook successfully so Razorpay doesn't retry
+        return res.status(200).json({ success: true, message: 'Webhook processed' });
 
-//             // send enrolled mail
-
-//             // return response
-//             res.status(200).json({
-//                 success: true,
-//                 message: 'Signature Verified and Course Added'
-//             })
-//         }
-
-//         catch (error) {
-//             console.log('Error while verifing rajorpay signature');
-//             console.log(error);
-//             return res.status(500).json({
-//                 success: false,
-//                 error: error.messsage,
-//                 message: 'Error while verifing rajorpay signature'
-//             });
-//         }
-//     }
-
-//     else {
-//         return res.status(400).json({
-//             success: false,
-//             message: 'Invalid signature'
-//         });
-//     }
-// }
+    } catch (error) {
+        console.error('❌ Webhook processing failed:', error);
+        return res.status(500).json({ success: false, message: 'Webhook error' });
+    }
+};
