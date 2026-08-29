@@ -11,6 +11,8 @@ RUN npm install
 
 # Copy the rest of the frontend code
 COPY . .
+# Increase Node memory limit to prevent heap out of memory errors on EC2
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Build the Vite project (outputs to the 'dist' folder)
 RUN npm run build
