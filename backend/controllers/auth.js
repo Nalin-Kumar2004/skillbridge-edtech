@@ -7,7 +7,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const cookie = require('cookie');
-const mailSender = require('../utils/mailSender');
+const { addEmailToQueue } = require('../queues/emailQueue');
 const otpTemplate = require('../mail/templates/emailVerificationTemplate');
 const { passwordUpdated } = require("../mail/templates/passwordUpdate");
 
@@ -42,7 +42,7 @@ exports.sendOTP = async (req, res) => {
         console.log(name);
 
         // send otp in mail
-        await mailSender(email, 'OTP Verification Email', otpTemplate(otp, name));
+        await addEmailToQueue(email, 'OTP Verification Email', otpTemplate(otp, name));
 
         // create an entry for otp in DB
         const otpBody = await OTP.create({ email, otp });
@@ -290,9 +290,8 @@ exports.changePassword = async (req, res) => {
             { new: true });
 
 
-        // send email
         try {
-            const emailResponse = await mailSender(
+            const emailResponse = await addEmailToQueue(
                 updatedUserDetails.email,
                 'Password for your account has been updated',
                 passwordUpdated(
@@ -300,7 +299,7 @@ exports.changePassword = async (req, res) => {
                     `Password updated successfully for ${updatedUserDetails.firstName} ${updatedUserDetails.lastName}`
                 )
             );
-            // console.log("Email sent successfully:", emailResponse);
+            // console.log("Email queued successfully:", emailResponse);
         }
         catch (error) {
             console.error("Error occurred while sending email:", error);

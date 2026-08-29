@@ -9,7 +9,7 @@ services:
       # We override the REDIS_URL to point to the local redis container below
       # for local development without needing an internet connection to Upstash
       - REDIS_URL=redis://redis:6379
-      - NODE_ENV=development
+      - NODE_ENV=production
     env_file:
       - ./backend/.env
     depends_on:

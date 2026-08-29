@@ -1,5 +1,5 @@
 const User = require('../models/user');
-const mailSender = require('../utils/mailSender');
+const { addEmailToQueue } = require('../queues/emailQueue');
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 
@@ -33,7 +33,7 @@ exports.resetPasswordToken = async (req, res) => {
         const url = `https://study-notion-mern-stack.netlify.app/update-password/${token}`;
 
         // send email containing url
-        await mailSender(email, 'Password Reset Link', `Password Reset Link : ${url}`);
+        await addEmailToQueue(email, 'Password Reset Link', `Password Reset Link : ${url}`);
 
         // return succes response
         res.status(200).json({

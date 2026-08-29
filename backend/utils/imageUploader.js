@@ -1,53 +1,76 @@
-const cloudinary = require('cloudinary').v2;
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const fs = require('fs');
+
+const s3Client = new S3Client({
+    region: process.env.AWS_REGION || 'us-east-1',
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'dummy-key',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'dummy-secret',
+    }
+});
 
 exports.uploadImageToCloudinary = async (file, folder, height, quality) => {
     try {
-        console.log('\n☁️  CLOUDINARY UPLOAD STARTED');
+        console.log('\n☁️  AWS S3 UPLOAD STARTED (Replaced Cloudinary)');
         console.log('File name:', file.name);
-        console.log('File size:', file.size, 'bytes');
-        console.log('File mimetype:', file.mimetype);
-        console.log('Temp file path:', file.tempFilePath);
         console.log('Target folder:', folder);
-        
-        const options = { folder };
-        if (height) options.height = height;
-        if (quality) options.quality = quality;
 
-        // options.resourse_type = 'auto';
-        options.resource_type = 'auto';
+        const fileContent = fs.readFileSync(file.tempFilePath);
         
-        console.log('Upload options:', options);
-        console.log('Uploading to Cloudinary...');
+        // Generate a unique filename
+        const uniqueFileName = `${folder}/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+
+        const params = {
+            Bucket: process.env.AWS_S3_BUCKET_NAME || 'skillbridge-bucket',
+            Key: uniqueFileName,
+            Body: fileContent,
+            ContentType: file.mimetype,
+        };
+
+        const command = new PutObjectCommand(params);
+        await s3Client.send(command);
+
+        const secure_url = `https://${params.Bucket}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${uniqueFileName}`;
         
-        const result = await cloudinary.uploader.upload(file.tempFilePath, options);
+        console.log('✅ AWS S3 UPLOAD SUCCESSFUL');
+        console.log('S3 URL:', secure_url);
         
-        console.log('✅ CLOUDINARY UPLOAD SUCCESSFUL');
-        console.log('Cloudinary URL:', result.secure_url);
-        console.log('Public ID:', result.public_id);
-        
-        return result;
+        // Return object in same format as Cloudinary so we don't break existing controllers
+        return {
+            secure_url: secure_url,
+            public_id: uniqueFileName
+        };
     }
     catch (error) {
-        console.log("\n❌❌❌ ERROR WHILE UPLOADING IMAGE TO CLOUDINARY ❌❌❌");
-        console.log('Error message:', error.message);
-        console.log('Full error:', error);
+        console.log("\n❌❌❌ ERROR WHILE UPLOADING TO AWS S3 ❌❌❌");
+        console.log('Error:', error.message);
         throw error;
     }
 }
 
-
-
-// Function to delete a resource by public ID
 exports.deleteResourceFromCloudinary = async (url) => {
     if (!url) return;
 
     try {
-        const result = await cloudinary.uploader.destroy(url);
-        console.log(`Deleted resource with public ID: ${url}`);
-        console.log('Delete Resourse result = ', result)
+        // Extract the Key from the S3 URL
+        // Example URL: https://bucket-name.s3.region.amazonaws.com/folder/filename.jpg
+        const urlParts = url.split('.amazonaws.com/');
+        if(urlParts.length !== 2) return;
+        
+        const key = urlParts[1];
+
+        const params = {
+            Bucket: process.env.AWS_S3_BUCKET_NAME || 'skillbridge-bucket',
+            Key: key,
+        };
+
+        const command = new DeleteObjectCommand(params);
+        const result = await s3Client.send(command);
+        
+        console.log(`✅ Deleted resource from S3 with key: ${key}`);
         return result;
     } catch (error) {
-        console.error(`Error deleting resource with public ID ${url}:`, error);
+        console.error(`Error deleting resource from S3:`, error);
         throw error;
     }
 };

@@ -1,4 +1,4 @@
-const mailSender = require('../utils/mailSender');
+const { addEmailToQueue } = require('../queues/emailQueue');
 
 exports.contactUsController = async (req, res) => {
   const { firstname, lastname, email, message, phoneNo } = req.body;
@@ -33,7 +33,7 @@ exports.contactUsController = async (req, res) => {
       <p><strong>Received at:</strong> ${contactMessage.receivedAt}</p>
     `;
 
-    await mailSender(
+    await addEmailToQueue(
       process.env.CONTACT_US_EMAIL || "nalinnow@gmail.com",
       `New Contact Form Submission from ${firstname}`,
       adminEmailBody
@@ -49,7 +49,7 @@ exports.contactUsController = async (req, res) => {
       <p>Best regards,<br>SkillBridge Team</p>
     `;
 
-    await mailSender(
+    await addEmailToQueue(
       email,
       "SkillBridge - We received your message",
       userEmailBody

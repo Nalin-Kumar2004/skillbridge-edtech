@@ -7,9 +7,8 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 require('dotenv').config();
 
-// connection to DB and cloudinary
+// connection to DB and Redis
 const { connectDB } = require('./config/database');
-const { cloudinaryConnect } = require('./config/cloudinary');
 const { connectRedis } = require('./config/redis');
 
 // routes
@@ -79,11 +78,11 @@ app.listen(PORT, () => {
 // connections
 console.log('\n🔗 Initializing database connection...');
 connectDB();
-console.log('\n☁️  Initializing Cloudinary connection...');
-cloudinaryConnect();
 console.log('\n⚡ Initializing Redis connection...');
 connectRedis();
 
+console.log('\n👷 Starting BullMQ Background Workers...');
+require('./workers/emailWorker');
 // mount route
 app.use('/api/v1/auth', userRoutes);
 app.use('/api/v1/profile', profileRoutes);

@@ -1,7 +1,7 @@
 const Rajorpay = require('razorpay');
 const instance = require('../config/rajorpay');
 const crypto = require('crypto');
-const mailSender = require('../utils/mailSender');
+const { addEmailToQueue } = require('../queues/emailQueue');
 const { courseEnrollmentEmail } = require('../mail/templates/courseEnrollmentEmail');
 require('dotenv').config();
 
@@ -174,11 +174,11 @@ const enrollStudents = async (courses, userId, eventId) => {
             );
 
             // Step D: Send Email (We do this asynchronously so it doesn't block the transaction)
-            mailSender(
+            addEmailToQueue(
                 enrolledStudent.email,
                 `Successfully Enrolled into ${enrolledCourse.courseName}`,
                 courseEnrollmentEmail(enrolledCourse.courseName, `${enrolledStudent.firstName}`)
-            ).catch(err => console.error("Email failed, but transaction is safe:", err));
+            ).catch(err => console.error("Email failed to queue, but transaction is safe:", err));
         }
 
         // 3. If EVERYTHING succeeded, commit all changes permanently
@@ -210,7 +210,7 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
     try {
         // find student
         const enrolledStudent = await User.findById(userId);
-        await mailSender(
+        await addEmailToQueue(
             enrolledStudent.email,
             `Payment Recieved`,
             paymentSuccessEmail(`${enrolledStudent.firstName}`,
