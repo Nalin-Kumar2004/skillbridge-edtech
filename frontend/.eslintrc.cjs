@@ -19,6 +19,8 @@ module.exports = {
     'react/prop-types': 'off',
     'react/no-unknown-property': 'off',
     'no-unused-vars': 'warn',
-    'no-extra-semi': 'off'
+    'no-extra-semi': 'off',
+    'react/no-unescaped-entities': 'off',
+    'no-unsafe-optional-chaining': 'off'
   },
 }
