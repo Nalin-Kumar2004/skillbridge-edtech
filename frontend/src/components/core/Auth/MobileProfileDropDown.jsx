@@ -29,7 +29,6 @@ import { fetchCourseCategories } from './../../../services/operations/courseDeta
 
 export default function MobileProfileDropDown() {
     const { user } = useSelector((state) => state.profile)
-    if (!user) return null
     // console.log('user data from store = ', user )
 
     const dispatch = useDispatch()
@@ -66,6 +65,7 @@ export default function MobileProfileDropDown() {
         fetchSublinks();
     }, [])
 
+    if (!user) return null
 
     return (
 
