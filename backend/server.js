@@ -49,7 +49,7 @@ app.use(
         origin: [
             'http://localhost:5173',
             'http://localhost:5174',
-            process.env.FRONTEND_URL
+            ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : [])
         ].filter(Boolean),
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
